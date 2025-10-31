@@ -9,10 +9,14 @@ import numpy as np
 import playwright.sync_api
 
 from browsergym.core.task import AbstractBrowserTask
+import webarena
 
 from .instance import WebArenaInstance
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_TEST_JSON_PATH = importlib.resources.files(webarena).joinpath("config_files/test.raw.json")
 
 
 class GenericWebArenaTask(AbstractBrowserTask):
@@ -28,6 +32,7 @@ class GenericWebArenaTask(AbstractBrowserTask):
         intent_template_id: Optional[int] = None,
         with_na_hint: bool = False,
         with_homepage_hint: bool = False,
+        test_json_path: Optional[str] = DEFAULT_TEST_JSON_PATH,
     ) -> None:
         super().__init__(seed)
 
@@ -48,9 +53,9 @@ class GenericWebArenaTask(AbstractBrowserTask):
             )
 
         # read the list of all webarena task configs
-        import webarena
-
-        all_configs_str = importlib.resources.files(webarena).joinpath("test.raw.json").read_text()
+        # open the test.json file and read its contents
+        with open(test_json_path, "r") as f:
+            all_configs_str = f.read()
 
         # substitute URLs
         for pattern, url_key in {
@@ -68,20 +73,14 @@ class GenericWebArenaTask(AbstractBrowserTask):
 
         # keep only the desired task configs
         if intent_template_id is not None:
-            task_configs = [
-                conf for conf in all_configs if conf["intent_template_id"] == intent_template_id
-            ]
+            task_configs = [conf for conf in all_configs if conf["intent_template_id"] == intent_template_id]
             if not task_configs:
-                raise ValueError(
-                    f"Could not find any task config with intent_template_id={intent_template_id}."
-                )
+                raise ValueError(f"Could not find any task config with intent_template_id={intent_template_id}.")
 
         elif task_id is not None:
             task_configs = [conf for conf in all_configs if conf["task_id"] == task_id]
             if not task_configs:
-                raise ValueError(
-                    f"Could not find any task config with task_id={intent_template_id}."
-                )
+                raise ValueError(f"Could not find any task config with task_id={intent_template_id}.")
 
         self.task_configs = task_configs
 
@@ -152,10 +151,7 @@ If you believe the task is impossible to complete, provide the answer "N/A".
         # https://github.com/web-arena-x/webarena/blob/c6475f0e9affe5252a2966e26b8cb4c834a4ae40/browser_env/envs.py#L227
         pass
 
-    def validate(
-        self, page: playwright.sync_api.Page, chat_messages: list[str]
-    ) -> Tuple[float, bool, str, dict]:
-
+    def validate(self, page: playwright.sync_api.Page, chat_messages: list[str]) -> Tuple[float, bool, str, dict]:
         # safeguard: check that all open tabs are either blank or within the list of WebArena URLs
         authorized_locations = ["newtab", ""] + [
             urllib.parse.urlparse(url).netloc
@@ -192,9 +188,7 @@ If you believe the task is impossible to complete, provide the answer "N/A".
             )
         # llm_fuzzy_match() bugfix (assert "correct" in response)
         except AssertionError:
-            logger.debug(
-                "llm_fuzzy_match() bugfix applied: AssertionError in evaluator, using score = 0.0"
-            )
+            logger.debug("llm_fuzzy_match() bugfix applied: AssertionError in evaluator, using score = 0.0")
             score = 0.0
 
         if score > 0 or last_action["action_type"] == ActionTypes.STOP:
